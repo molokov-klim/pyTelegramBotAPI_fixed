@@ -168,7 +168,8 @@ class TeleBot:
             disable_notification: Optional[bool]=None,
             protect_content: Optional[bool]=None,
             allow_sending_without_reply: Optional[bool]=None,
-            colorful_logs: Optional[bool]=False
+            colorful_logs: Optional[bool]=False,
+            ssl_verify=True,
     ):
 
         # update-related
@@ -185,6 +186,7 @@ class TeleBot:
         self.allow_sending_without_reply = allow_sending_without_reply
         self.webhook_listener = None
         self._user = None
+        self.ssl_verify = ssl_verify
 
         # logs-related
         if colorful_logs:

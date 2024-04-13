@@ -14,6 +14,7 @@ from requests.adapters import HTTPAdapter
 try:
     # noinspection PyUnresolvedReferences
     from requests.packages.urllib3 import fields
+
     format_header_param = fields.format_header_param
 except ImportError:
     format_header_param = None
@@ -32,7 +33,7 @@ FILE_URL = None
 CONNECT_TIMEOUT = 15
 READ_TIMEOUT = 30
 
-LONG_POLLING_TIMEOUT = 10 # Should be positive, short polling should be used for testing purposes only (https://core.telegram.org/bots/api#getupdates)
+LONG_POLLING_TIMEOUT = 10  # Should be positive, short polling should be used for testing purposes only (https://core.telegram.org/bots/api#getupdates)
 
 SESSION_TIME_TO_LIVE = 600  # In seconds. None - live forever, 0 - one-time
 
@@ -66,7 +67,7 @@ def _get_req_session(reset=False):
         return util.per_thread('req_session', lambda: session if session else requests.sessions.Session(), reset)
 
 
-def _make_request(token, method_name, method='get', params=None, files=None):
+def _make_request(token, method_name, method='get', params=None, files=None, verify=True):
     """
     Makes a request to the Telegram API.
     :param token: The bot's API token. (Created with @BotFather)
@@ -84,7 +85,11 @@ def _make_request(token, method_name, method='get', params=None, files=None):
     else:
         request_url = "https://api.telegram.org/bot{0}/{1}".format(token, method_name)
 
-    logger.debug("Request: method={0} url={1} params={2} files={3}".format(method, request_url, params, files).replace(token, token.split(':')[0] + ":{TOKEN}"))
+    logger.debug(
+        "Request: method={0} url={1} params={2} files={3}".format(method, request_url, params, files).replace(token,
+                                                                                                              token.split(
+                                                                                                                  ':')[
+                                                                                                                  0] + ":{TOKEN}"))
     read_timeout = READ_TIMEOUT
     connect_timeout = CONNECT_TIMEOUT
 
@@ -97,7 +102,6 @@ def _make_request(token, method_name, method='get', params=None, files=None):
             elif isinstance(value, tuple) and (len(value) == 2) and isinstance(value[1], types.InputFile):
                 files[key] = (value[0], value[1].file)
 
-    
     if files and format_header_param:
         fields.format_header_param = _no_encode(format_header_param)
     if params:
@@ -111,7 +115,7 @@ def _make_request(token, method_name, method='get', params=None, files=None):
             # Long polling hangs for a given time. Read timeout should be greater that long_polling_timeout
             read_timeout = max(long_polling_timeout + 5, read_timeout)
 
-    params = params or None # Set params to None if empty
+    params = params or None  # Set params to None if empty
     result = None
 
     if CUSTOM_REQUEST_SENDER:
@@ -122,12 +126,13 @@ def _make_request(token, method_name, method='get', params=None, files=None):
     elif RETRY_ON_ERROR and RETRY_ENGINE == 1:
         got_result = False
         current_try = 0
-        while not got_result and current_try<MAX_RETRIES-1:
-            current_try+=1
+        while not got_result and current_try < MAX_RETRIES - 1:
+            current_try += 1
             try:
                 result = _get_req_session().request(
                     method, request_url, params=params, files=files,
-                    timeout=(connect_timeout, read_timeout), proxies=proxy)
+                    timeout=(connect_timeout, read_timeout), proxies=proxy,
+                    verify=verify)
                 got_result = True
             except HTTPError:
                 logger.debug("HTTP Error on {0} method (Try #{1})".format(method_name, current_try))
@@ -140,8 +145,9 @@ def _make_request(token, method_name, method='get', params=None, files=None):
                 time.sleep(RETRY_TIMEOUT)
         if not got_result:
             result = _get_req_session().request(
-                    method, request_url, params=params, files=files,
-                    timeout=(connect_timeout, read_timeout), proxies=proxy)
+                method, request_url, params=params, files=files,
+                timeout=(connect_timeout, read_timeout), proxies=proxy,
+                verify=verify)
     elif RETRY_ON_ERROR and RETRY_ENGINE == 2:
         http = _get_req_session()
         # noinspection PyUnresolvedReferences
@@ -156,14 +162,16 @@ def _make_request(token, method_name, method='get', params=None, files=None):
             http.mount(prefix, adapter)
         result = http.request(
             method, request_url, params=params, files=files,
-            timeout=(connect_timeout, read_timeout), proxies=proxy)
+            timeout=(connect_timeout, read_timeout), proxies=proxy,
+            verify=verify)
     else:
         result = _get_req_session().request(
             method, request_url, params=params, files=files,
-            timeout=(connect_timeout, read_timeout), proxies=proxy)
-    
+            timeout=(connect_timeout, read_timeout), proxies=proxy,
+            verify=verify)
+
     logger.debug("The server returned: '{0}'".format(result.text.encode('utf8')))
-    
+
     json_result = _check_result(method_name, result)
     if json_result:
         return json_result['result']
@@ -189,10 +197,10 @@ def _check_result(method_name, result):
             raise ApiHTTPException(method_name, result)
         else:
             raise ApiInvalidJSONException(method_name, result)
-    else:    
+    else:
         if not result_json['ok']:
             raise ApiTelegramException(method_name, result, result_json)
-            
+
         return result_json
 
 
@@ -226,21 +234,21 @@ def get_file_url(token, file_id):
 
 def download_file(token, file_path):
     if FILE_URL is None:
-        url =  "https://api.telegram.org/file/bot{0}/{1}".format(token, file_path)
+        url = "https://api.telegram.org/file/bot{0}/{1}".format(token, file_path)
     else:
         # noinspection PyUnresolvedReferences
-        url =  FILE_URL.format(token, file_path)
-        
+        url = FILE_URL.format(token, file_path)
+
     result = _get_req_session().get(url, proxies=proxy)
     if result.status_code != 200:
         raise ApiHTTPException('Download file', result)
-        
+
     return result.content
 
 
 def send_message(
         token, chat_id, text,
-         reply_markup=None,
+        reply_markup=None,
         parse_mode=None, disable_notification=None, timeout=None,
         entities=None, protect_content=None,
         message_thread_id=None, reply_parameters=None, link_preview_options=None,
@@ -271,7 +279,7 @@ def send_message(
 
 
 def set_webhook(token, url=None, certificate=None, max_connections=None, allowed_updates=None, ip_address=None,
-                drop_pending_updates = None, timeout=None, secret_token=None):
+                drop_pending_updates=None, timeout=None, secret_token=None):
     method_url = r'setWebhook'
     payload = {
         'url': url if url else "",
@@ -281,9 +289,9 @@ def set_webhook(token, url=None, certificate=None, max_connections=None, allowed
         files = {'certificate': certificate}
     if max_connections:
         payload['max_connections'] = max_connections
-    if allowed_updates is not None:       # Empty lists should pass
+    if allowed_updates is not None:  # Empty lists should pass
         payload['allowed_updates'] = json.dumps(allowed_updates)
-    if ip_address is not None:            # Empty string should pass
+    if ip_address is not None:  # Empty string should pass
         payload['ip_address'] = ip_address
     if drop_pending_updates is not None:  # Any bool value should pass
         payload['drop_pending_updates'] = drop_pending_updates
@@ -312,7 +320,7 @@ def get_webhook_info(token, timeout=None):
     return _make_request(token, method_url, params=payload)
 
 
-def get_updates(token, offset=None, limit=None, timeout=None, allowed_updates=None, long_polling_timeout = None):
+def get_updates(token, offset=None, limit=None, timeout=None, allowed_updates=None, long_polling_timeout=None):
     method_url = r'getUpdates'
     payload = {}
     if offset:
@@ -336,6 +344,7 @@ def get_user_profile_photos(token, user_id, offset=None, limit=None):
         payload['limit'] = limit
     return _make_request(token, method_url, params=payload)
 
+
 def set_message_reaction(token, chat_id, message_id, reaction=None, is_big=None):
     method_url = r'setMessageReaction'
     payload = {'chat_id': chat_id, 'message_id': message_id}
@@ -344,7 +353,6 @@ def set_message_reaction(token, chat_id, message_id, reaction=None, is_big=None)
     if is_big is not None:
         payload['is_big'] = is_big
     return _make_request(token, method_url, params=payload)
-
 
 
 def get_chat(token, chat_id):
@@ -388,6 +396,7 @@ def replace_sticker_in_set(token, user_id, name, old_sticker, sticker):
     payload = {'user_id': user_id, 'name': name, 'old_sticker': old_sticker, 'sticker': sticker.to_json()}
     return _make_request(token, method_url, params=payload)
 
+
 def set_chat_sticker_set(token, chat_id, sticker_set_name):
     method_url = r'setChatStickerSet'
     payload = {'chat_id': chat_id, 'sticker_set_name': sticker_set_name}
@@ -423,7 +432,8 @@ def forward_message(
 
 
 def copy_message(token, chat_id, from_chat_id, message_id, caption=None, parse_mode=None, caption_entities=None,
-                 disable_notification=None, reply_markup=None, timeout=None, protect_content=None, message_thread_id=None,
+                 disable_notification=None, reply_markup=None, timeout=None, protect_content=None,
+                 message_thread_id=None,
                  reply_parameters=None):
     method_url = r'copyMessage'
     payload = {'chat_id': chat_id, 'from_chat_id': from_chat_id, 'message_id': message_id}
@@ -540,7 +550,7 @@ def send_media_group(
 def send_location(
         token, chat_id, latitude, longitude,
         live_period=None,
-        reply_markup=None, disable_notification=None, 
+        reply_markup=None, disable_notification=None,
         timeout=None, horizontal_accuracy=None, heading=None,
         proximity_alert_radius=None, protect_content=None,
         message_thread_id=None, reply_parameters=None, business_connection_id=None):
@@ -618,7 +628,8 @@ def send_venue(
         token, chat_id, latitude, longitude, title, address,
         foursquare_id=None, foursquare_type=None, disable_notification=None,
         reply_markup=None, timeout=None, google_place_id=None,
-        google_place_type=None, protect_content=None, message_thread_id=None, reply_parameters=None, business_connection_id=None):
+        google_place_type=None, protect_content=None, message_thread_id=None, reply_parameters=None,
+        business_connection_id=None):
     method_url = r'sendVenue'
     payload = {'chat_id': chat_id, 'latitude': latitude, 'longitude': longitude, 'title': title, 'address': address}
     if foursquare_id:
@@ -735,12 +746,12 @@ def send_video(token, chat_id, data, duration=None, caption=None, reply_markup=N
         payload['reply_parameters'] = reply_parameters.to_json()
     if business_connection_id:
         payload['business_connection_id'] = business_connection_id
-    
+
     return _make_request(token, method_url, params=payload, files=files, method='post')
 
 
 def send_animation(
-        token, chat_id, data, duration=None, caption=None,  reply_markup=None,
+        token, chat_id, data, duration=None, caption=None, reply_markup=None,
         parse_mode=None, disable_notification=None, timeout=None, thumbnail=None, caption_entities=None,
         protect_content=None, width=None, height=None, message_thread_id=None, reply_parameters=None,
         has_spoiler=None, business_connection_id=None):
@@ -792,7 +803,7 @@ def send_animation(
 
 def send_voice(token, chat_id, voice, caption=None, duration=None, reply_markup=None,
                parse_mode=None, disable_notification=None, timeout=None, caption_entities=None,
-                 protect_content=None, message_thread_id=None, reply_parameters=None, business_connection_id=None):
+               protect_content=None, message_thread_id=None, reply_parameters=None, business_connection_id=None):
     method_url = r'sendVoice'
     payload = {'chat_id': chat_id}
     files = None
@@ -827,7 +838,7 @@ def send_voice(token, chat_id, voice, caption=None, duration=None, reply_markup=
 
 def send_video_note(token, chat_id, data, duration=None, length=None, reply_markup=None,
                     disable_notification=None, timeout=None, thumbnail=None, protect_content=None,
-                    message_thread_id=None, reply_parameters=None,business_connection_id=None):
+                    message_thread_id=None, reply_parameters=None, business_connection_id=None):
     method_url = r'sendVideoNote'
     payload = {'chat_id': chat_id}
     files = None
@@ -868,7 +879,8 @@ def send_video_note(token, chat_id, data, duration=None, length=None, reply_mark
 
 def send_audio(token, chat_id, audio, caption=None, duration=None, performer=None, title=None,
                reply_markup=None, parse_mode=None, disable_notification=None, timeout=None, thumbnail=None,
-               caption_entities=None, protect_content=None, message_thread_id=None, reply_parameters=None, business_connection_id=None):
+               caption_entities=None, protect_content=None, message_thread_id=None, reply_parameters=None,
+               business_connection_id=None):
     method_url = r'sendAudio'
     payload = {'chat_id': chat_id}
     files = None
@@ -916,7 +928,8 @@ def send_audio(token, chat_id, audio, caption=None, duration=None, performer=Non
 def send_data(token, chat_id, data, data_type, reply_markup=None, parse_mode=None,
               disable_notification=None, timeout=None, caption=None, thumbnail=None, caption_entities=None,
               disable_content_type_detection=None, visible_file_name=None,
-              protect_content = None, message_thread_id=None, emoji=None, reply_parameters=None, business_connection_id=None):
+              protect_content=None, message_thread_id=None, emoji=None, reply_parameters=None,
+              business_connection_id=None):
     method_url = get_method_by_type(data_type)
     payload = {'chat_id': chat_id}
     files = None
@@ -1002,7 +1015,7 @@ def restrict_chat_member(
             payload['until_date'] = until_date.timestamp()
         else:
             payload['until_date'] = until_date
-    
+
     return _make_request(token, method_url, params=payload, method='post')
 
 
@@ -1189,7 +1202,7 @@ def set_my_description(token, description=None, language_code=None):
     if language_code is not None:
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload, method='post')
-    
+
 
 def get_my_description(token, language_code=None):
     method_url = r'getMyDescription'
@@ -1197,6 +1210,7 @@ def get_my_description(token, language_code=None):
     if language_code:
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload)
+
 
 def set_my_short_description(token, short_description=None, language_code=None):
     method_url = r'setMyShortDescription'
@@ -1207,12 +1221,14 @@ def set_my_short_description(token, short_description=None, language_code=None):
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload, method='post')
 
+
 def get_my_short_description(token, language_code=None):
     method_url = r'getMyShortDescription'
     payload = {}
     if language_code:
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload)
+
 
 def get_my_commands(token, scope=None, language_code=None):
     method_url = r'getMyCommands'
@@ -1223,6 +1239,7 @@ def get_my_commands(token, scope=None, language_code=None):
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload)
 
+
 def set_my_name(token, name=None, language_code=None):
     method_url = r'setMyName'
     payload = {}
@@ -1232,12 +1249,14 @@ def set_my_name(token, name=None, language_code=None):
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload, method='post')
 
+
 def get_my_name(token, language_code=None):
     method_url = r'getMyName'
     payload = {}
     if language_code is not None:
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload)
+
 
 def set_chat_menu_button(token, chat_id=None, menu_button=None):
     method_url = r'setChatMenuButton'
@@ -1247,6 +1266,7 @@ def set_chat_menu_button(token, chat_id=None, menu_button=None):
     if menu_button:
         payload['menu_button'] = menu_button.to_json()
     return _make_request(token, method_url, params=payload, method='post')
+
 
 def get_chat_menu_button(token, chat_id=None):
     method_url = r'getChatMenuButton'
@@ -1283,17 +1303,19 @@ def set_my_commands(token, commands, scope=None, language_code=None):
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload, method='post')
 
+
 def get_business_connection(token, business_connection_id):
     method_url = 'getBusinessConnection'
     payload = {'business_connection_id': business_connection_id}
-    return _make_request(token, method_url, params=payload , method='post')
+    return _make_request(token, method_url, params=payload, method='post')
+
 
 def delete_my_commands(token, scope=None, language_code=None):
     method_url = r'deleteMyCommands'
     payload = {}
-    if scope: 
+    if scope:
         payload['scope'] = scope.to_json()
-    if language_code: 
+    if language_code:
         payload['language_code'] = language_code
     return _make_request(token, method_url, params=payload, method='post')
 
@@ -1331,7 +1353,7 @@ def unpin_all_chat_messages(token, chat_id):
 # Updating messages
 
 def edit_message_text(token, text, chat_id=None, message_id=None, inline_message_id=None, parse_mode=None,
-                      entities = None, reply_markup=None, link_preview_options=None):
+                      entities=None, reply_markup=None, link_preview_options=None):
     method_url = r'editMessageText'
     payload = {'text': text}
     if chat_id:
@@ -1352,7 +1374,7 @@ def edit_message_text(token, text, chat_id=None, message_id=None, inline_message
 
 
 def edit_message_caption(token, caption, chat_id=None, message_id=None, inline_message_id=None,
-                         parse_mode=None, caption_entities=None,reply_markup=None):
+                         parse_mode=None, caption_entities=None, reply_markup=None):
     method_url = r'editMessageCaption'
     payload = {'caption': caption}
     if chat_id:
@@ -1412,7 +1434,7 @@ def delete_message(token, chat_id, message_id, timeout=None):
 def send_game(
         token, chat_id, game_short_name,
         disable_notification=None, reply_markup=None, timeout=None,
-       protect_content=None, message_thread_id=None, reply_parameters=None, business_connection_id=None):
+        protect_content=None, message_thread_id=None, reply_parameters=None, business_connection_id=None):
     method_url = r'sendGame'
     payload = {'chat_id': chat_id, 'game_short_name': game_short_name}
     if disable_notification is not None:
@@ -1489,9 +1511,9 @@ def get_game_high_scores(token, user_id, chat_id=None, message_id=None, inline_m
 
 def send_invoice(
         token, chat_id, title, description, invoice_payload, provider_token, currency, prices,
-        start_parameter = None, photo_url=None, photo_size=None, photo_width=None, photo_height=None,
+        start_parameter=None, photo_url=None, photo_size=None, photo_width=None, photo_height=None,
         need_name=None, need_phone_number=None, need_email=None, need_shipping_address=None,
-        send_phone_number_to_provider = None, send_email_to_provider = None, is_flexible=None,
+        send_phone_number_to_provider=None, send_email_to_provider=None, is_flexible=None,
         disable_notification=None, reply_markup=None, provider_data=None,
         timeout=None, max_tip_amount=None, suggested_tip_amounts=None,
         protect_content=None, message_thread_id=None, reply_parameters=None):
@@ -1617,6 +1639,7 @@ def unpin_all_general_forum_topic_messages(token, chat_id):
     payload = {'chat_id': chat_id}
     return _make_request(token, method_url, params=payload, method='post')
 
+
 # InlineQuery
 
 def answer_callback_query(token, callback_query_id, text=None, show_alert=None, url=None, cache_time=None):
@@ -1650,6 +1673,7 @@ def get_user_chat_boosts(token, chat_id, user_id):
     payload = {'chat_id': chat_id, 'user_id': user_id}
     return _make_request(token, method_url, params=payload)
 
+
 def answer_inline_query(token, inline_query_id, results, cache_time=None, is_personal=None, next_offset=None,
                         button=None):
     method_url = 'answerInlineQuery'
@@ -1669,9 +1693,11 @@ def get_sticker_set(token, name):
     method_url = 'getStickerSet'
     return _make_request(token, method_url, params={'name': name})
 
+
 def get_custom_emoji_stickers(token, custom_emoji_ids):
     method_url = r'getCustomEmojiStickers'
     return _make_request(token, method_url, params={'custom_emoji_ids': json.dumps(custom_emoji_ids)})
+
 
 def set_sticker_keywords(token, sticker, keywords=None):
     method_url = 'setStickerKeywords'
@@ -1680,6 +1706,7 @@ def set_sticker_keywords(token, sticker, keywords=None):
         payload['keywords'] = json.dumps(keywords)
     return _make_request(token, method_url, params=payload, method='post')
 
+
 def set_sticker_mask_position(token, sticker, mask_position=None):
     method_url = 'setStickerMaskPosition'
     payload = {'sticker': sticker}
@@ -1687,7 +1714,7 @@ def set_sticker_mask_position(token, sticker, mask_position=None):
         payload['mask_position'] = mask_position.to_json()
     return _make_request(token, method_url, params=payload, method='post')
 
-    
+
 def upload_sticker_file(token, user_id, sticker, sticker_format):
     method_url = 'uploadStickerFile'
     payload = {'user_id': user_id, 'sticker_format': sticker_format}
@@ -1741,7 +1768,7 @@ def create_new_sticker_set(
             list_keys = list(file.keys())
             files[list_keys[0]] = file[list_keys[0]]
         lst.append(json_dict)
-    
+
     payload['stickers'] = json.dumps(lst)
 
     return _make_request(token, method_url, params=payload, files=files, method='post')
@@ -1773,13 +1800,14 @@ def answer_web_app_query(token, web_app_query_id, result: types.InlineQueryResul
 
 
 def create_invoice_link(token, title, description, payload, provider_token,
-            currency, prices, max_tip_amount=None, suggested_tip_amounts=None, provider_data=None,
-            photo_url=None, photo_size=None, photo_width=None, photo_height=None, need_name=None, need_phone_number=None,
-            need_email=None, need_shipping_address=None, send_phone_number_to_provider=None,
-            send_email_to_provider=None, is_flexible=None):
+                        currency, prices, max_tip_amount=None, suggested_tip_amounts=None, provider_data=None,
+                        photo_url=None, photo_size=None, photo_width=None, photo_height=None, need_name=None,
+                        need_phone_number=None,
+                        need_email=None, need_shipping_address=None, send_phone_number_to_provider=None,
+                        send_email_to_provider=None, is_flexible=None):
     method_url = r'createInvoiceLink'
     payload = {'title': title, 'description': description, 'payload': payload, 'provider_token': provider_token,
-                'currency': currency, 'prices': _convert_list_json_serializable(prices)}
+               'currency': currency, 'prices': _convert_list_json_serializable(prices)}
     if max_tip_amount:
         payload['max_tip_amount'] = max_tip_amount
     if suggested_tip_amounts:
@@ -1815,9 +1843,10 @@ def create_invoice_link(token, title, description, payload, provider_token,
 def send_poll(
         token, chat_id,
         question, options,
-        is_anonymous = None, type = None, allows_multiple_answers = None, correct_option_id = None, explanation = None,
-        explanation_parse_mode=None, open_period = None, close_date = None, is_closed = None, disable_notification=False,
-        reply_markup=None, timeout=None, explanation_entities=None, protect_content=None, message_thread_id=None, reply_parameters=None,
+        is_anonymous=None, type=None, allows_multiple_answers=None, correct_option_id=None, explanation=None,
+        explanation_parse_mode=None, open_period=None, close_date=None, is_closed=None, disable_notification=False,
+        reply_markup=None, timeout=None, explanation_entities=None, protect_content=None, message_thread_id=None,
+        reply_parameters=None,
         business_connection_id=None):
     method_url = r'sendPoll'
     payload = {
@@ -1865,6 +1894,7 @@ def send_poll(
         payload['business_connection_id'] = business_connection_id
     return _make_request(token, method_url, params=payload)
 
+
 def create_forum_topic(token, chat_id, name, icon_color=None, icon_custom_emoji_id=None):
     method_url = r'createForumTopic'
     payload = {'chat_id': chat_id, 'name': name}
@@ -1873,6 +1903,7 @@ def create_forum_topic(token, chat_id, name, icon_color=None, icon_custom_emoji_
     if icon_custom_emoji_id:
         payload['icon_custom_emoji_id'] = icon_custom_emoji_id
     return _make_request(token, method_url, params=payload)
+
 
 def edit_forum_topic(token, chat_id, message_thread_id, name=None, icon_custom_emoji_id=None):
     method_url = r'editForumTopic'
@@ -1883,29 +1914,35 @@ def edit_forum_topic(token, chat_id, message_thread_id, name=None, icon_custom_e
         payload['icon_custom_emoji_id'] = icon_custom_emoji_id
     return _make_request(token, method_url, params=payload)
 
+
 def close_forum_topic(token, chat_id, message_thread_id):
     method_url = r'closeForumTopic'
     payload = {'chat_id': chat_id, 'message_thread_id': message_thread_id}
     return _make_request(token, method_url, params=payload)
+
 
 def reopen_forum_topic(token, chat_id, message_thread_id):
     method_url = r'reopenForumTopic'
     payload = {'chat_id': chat_id, 'message_thread_id': message_thread_id}
     return _make_request(token, method_url, params=payload)
 
+
 def delete_forum_topic(token, chat_id, message_thread_id):
     method_url = r'deleteForumTopic'
     payload = {'chat_id': chat_id, 'message_thread_id': message_thread_id}
     return _make_request(token, method_url, params=payload)
+
 
 def unpin_all_forum_topic_messages(token, chat_id, message_thread_id):
     method_url = r'unpinAllForumTopicMessages'
     payload = {'chat_id': chat_id, 'message_thread_id': message_thread_id}
     return _make_request(token, method_url, params=payload)
 
+
 def get_forum_topic_icon_stickers(token):
     method_url = r'getForumTopicIconStickers'
     return _make_request(token, method_url)
+
 
 def stop_poll(token, chat_id, message_id, reply_markup=None):
     method_url = r'stopPoll'
@@ -1914,30 +1951,36 @@ def stop_poll(token, chat_id, message_id, reply_markup=None):
         payload['reply_markup'] = _convert_markup(reply_markup)
     return _make_request(token, method_url, params=payload)
 
+
 def edit_general_forum_topic(token, chat_id, name):
     method_url = r'editGeneralForumTopic'
     payload = {'chat_id': chat_id, 'name': name}
     return _make_request(token, method_url, params=payload)
+
 
 def close_general_forum_topic(token, chat_id):
     method_url = r'closeGeneralForumTopic'
     payload = {'chat_id': chat_id}
     return _make_request(token, method_url, params=payload)
 
+
 def reopen_general_forum_topic(token, chat_id):
     method_url = r'reopenGeneralForumTopic'
     payload = {'chat_id': chat_id}
     return _make_request(token, method_url, params=payload)
+
 
 def hide_general_forum_topic(token, chat_id):
     method_url = r'hideGeneralForumTopic'
     payload = {'chat_id': chat_id}
     return _make_request(token, method_url, params=payload)
 
+
 def unhide_general_forum_topic(token, chat_id):
     method_url = r'unhideGeneralForumTopic'
     payload = {'chat_id': chat_id}
     return _make_request(token, method_url, params=payload)
+
 
 def delete_messages(token, chat_id, message_ids):
     method_url = 'deleteMessages'
@@ -1947,8 +1990,9 @@ def delete_messages(token, chat_id, message_ids):
     }
     return _make_request(token, method_url, params=payload)
 
+
 def forward_messages(token, chat_id, from_chat_id, message_ids, disable_notification=None,
-                            message_thread_id=None, protect_content=None):
+                     message_thread_id=None, protect_content=None):
     method_url = 'forwardMessages'
     payload = {
         'chat_id': chat_id,
@@ -1963,8 +2007,9 @@ def forward_messages(token, chat_id, from_chat_id, message_ids, disable_notifica
         payload['protect_content'] = protect_content
     return _make_request(token, method_url, params=payload)
 
+
 def copy_messages(token, chat_id, from_chat_id, message_ids, disable_notification=None,
-                        message_thread_id=None, protect_content=None, remove_caption=None):
+                  message_thread_id=None, protect_content=None, remove_caption=None):
     method_url = 'copyMessages'
     payload = {
         'chat_id': chat_id,
@@ -2071,10 +2116,11 @@ class ApiHTTPException(ApiException):
     This class represents an Exception thrown when a call to the 
     Telegram API server returns HTTP code that is not 200.
     """
+
     def __init__(self, function_name, result):
         super(ApiHTTPException, self).__init__(
             "The server returned HTTP {0} {1}. Response body:\n[{2}]" \
-            .format(result.status_code, result.reason, result.text.encode('utf8')),
+                .format(result.status_code, result.reason, result.text.encode('utf8')),
             function_name,
             result)
 
@@ -2084,10 +2130,11 @@ class ApiInvalidJSONException(ApiException):
     This class represents an Exception thrown when a call to the 
     Telegram API server returns invalid json.
     """
+
     def __init__(self, function_name, result):
         super(ApiInvalidJSONException, self).__init__(
             "The server returned an invalid JSON response. Response body:\n[{0}]" \
-            .format(result.text.encode('utf8')),
+                .format(result.text.encode('utf8')),
             function_name,
             result)
 
@@ -2096,10 +2143,11 @@ class ApiTelegramException(ApiException):
     """
     This class represents an Exception thrown when a Telegram API returns error code.
     """
+
     def __init__(self, function_name, result, result_json):
         super(ApiTelegramException, self).__init__(
             "Error code: {0}. Description: {1}" \
-            .format(result_json['error_code'], result_json['description']),
+                .format(result_json['error_code'], result_json['description']),
             function_name,
             result)
         self.result_json = result_json
