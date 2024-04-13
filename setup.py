@@ -1,15 +1,15 @@
 from setuptools import setup
 
 setup(
-    name="pytelegrambotapifixed",
+    name="pytelegrambotapi_fixed",
     description="fixed version of pyTelegramBotApi",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     version="4.12.2",
     url="https://github.com/molokov-klim/pyTelegramBotAPI_fixed",
     license="MIT",
-    py_modules=["telebot"],
-    packages=["telebot"],
+    py_modules=["telebot_f"],
+    packages=["telebot_f"],
     install_requires=["pytest", "requests==2.31.0", "wheel==0.38.1" "aiohttp==3.9.0"],
     extras_require={"test": ["beautifulsoup4", "lxml", "requests"]},
     platforms="any",
