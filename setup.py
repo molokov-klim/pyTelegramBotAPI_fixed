@@ -5,7 +5,7 @@ setup(
     description="fixed version of pyTelegramBotApi",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    version="4.12.1",
+    version="4.12.2",
     url="https://github.com/molokov-klim/pyTelegramBotAPI_fixed",
     license="MIT",
     py_modules=["telebot"],
